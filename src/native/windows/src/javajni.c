@@ -757,6 +757,8 @@ static LPWSTR __apxEvalPathPartW(APXHANDLE hPool, LPWSTR pStr, LPCWSTR szPattern
     WCHAR       szJars[MAX_PATH + 1];
     WCHAR       szPath[MAX_PATH + 1];
     WCHAR       szQuote[2];
+	LPWSTR cSzPattern;
+	int nullTerm = 1;
 	
 	int quotes = 0;
 	if(*(szPattern) == L'\"'){
@@ -767,41 +769,39 @@ static LPWSTR __apxEvalPathPartW(APXHANDLE hPool, LPWSTR pStr, LPCWSTR szPattern
 		quotes = quotes + 2;
 	}
 	
-	LPWSTR cleanedSZPattern;
 	if(quotes == 3){
-		cleanedSZPattern = __apxStrnCatW(hPool, NULL, null, szPattern+1);
-		*(copiedSzPattern+lstrlenW(cleanedSZPattern)-1) = L'\0';
+		cSzPattern = __apxStrnCatW(hPool, NULL, NULL, szPattern+1);
+		*(cSzPattern+lstrlenW(cSzPattern)-1) = L'\0';
 	} else if(quotes == 2){
-		cleanedSZPattern = __apxStrnCatW(hPool, NULL, null, szPattern);
-		*(copiedSzPattern+lstrlenW(cleanedSZPattern)-1) = L'\0';
+		cSzPattern = __apxStrnCatW(hPool, NULL, NULL, szPattern);
+		*(cSzPattern+lstrlenW(cSzPattern)-1) = L'\0';
 	} else if(quotes == 1){
-		cleanedSZPattern = __apxStrnCatW(hPool, NULL, null, szPattern+1);
+		cSzPattern = __apxStrnCatW(hPool, NULL, NULL, szPattern+1);
 	} else {
-		cleanedSZPattern = szPattern;
-	}	
+		cSzPattern = (LPWSTR)szPattern;
+	}
 	
-	int nullTerm = 1;
 	if(quotes == 3){
 		szPath[0] = L'\"';
 		szPath[1] = L';';
 		szPath[2] = L'\"';
 		szPath[3] = L'\0';
-		nullterm = 3;
+		nullTerm = 3;
 	} else {
 		szPath[0] = L';';
 		szPath[1] = L'\0';
-		nullterm = 1;
+		nullTerm = 1;
 	}
 	
 	szQuote[0] = L'\"';
 	szQuote[1] = L'\0';
 
-    if (lstrlenW(cleanedSZPattern) > (sizeof(szJars) - 5)) {
+    if (lstrlenW(cSzPattern) > (sizeof(szJars) - 5)) {
         return __apxStrnCatW(hPool, pStr, szPattern, NULL);
     }
-    lstrcpyW(szJars, cleanedSZPattern);
+    lstrcpyW(szJars, cSzPattern);
 	lstrcatW(szJars, ".jar");
-    lstrcatW(szPath, cleanedSZPattern);
+    lstrcatW(szPath, cSzPattern);
 	
     /* Remove the trailing asterisk
      */
@@ -833,7 +833,7 @@ static LPWSTR __apxEvalPathPartW(APXHANDLE hPool, LPWSTR pStr, LPCWSTR szPattern
 		pStr = __apxStrnCatW(hPool, pStr, szQuote, NULL);
 	}
 	if(quotes != 0){
-		apxFree(cleanedSZPattern);
+		apxFree(cSzPattern);
 	}		
     return pStr;
 }
@@ -885,8 +885,8 @@ static LPWSTR __apxEvalClasspathW(APXHANDLE hPool, LPCWSTR szCp)
         pPtr = pPos + 1;
     }
     if (*pPtr) {
-		offset=1;
         int end = lstrlenW(pPtr);
+		offset=1;
         if (pGcp)
             pGcp = __apxStrnCatW(hPool, pGcp, L";", NULL);
         else
@@ -1111,20 +1111,14 @@ apxJavaCmdInitialize(APXHANDLE hPool, LPCWSTR szClassPath, LPCWSTR szClass,
 
     /* Process the classpath and class */
     if (szClassPath && *szClassPath) {
-        p = (LPWSTR)apxPoolAlloc(hPool, (lstrlenW(JAVA_CLASSPATH_W) + lstrlenW(szClassPath)) * sizeof(WCHAR));
-        lstrcpyW(p, JAVA_CLASSPATH_W);
-        lstrcatW(p, szClassPath);
+        p = __apxEvalClasspath(hPool, szClassPath);
+		 /* How to handle failure? */
+		if (p == NULL) {
+			apxLogWrite(APXLOG_MARK_ERROR "Invalid classpath %s", szClassPath);
+			return FALSE;
+		}
         (*lppArray)[i++] = p;
     }
-	if (szClassPath && *szClassPath) {
-            szCp = __apxEvalClasspath(hJava->hPool, szClassPath);
-            if (szCp == NULL) {
-                apxLogWrite(APXLOG_MARK_ERROR "Invalid classpath %s", szClassPath);
-                return FALSE;
-            }
-            lpJvmOptions[nOptions - sOptions].optionString = szCp;
-            --sOptions;
-        }
     if (szClass) {
         p = (LPWSTR)apxPoolAlloc(hPool, (lstrlenW(szClass)) * sizeof(WCHAR));
         lstrcpyW(p, szClass);
