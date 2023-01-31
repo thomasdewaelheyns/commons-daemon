@@ -717,6 +717,204 @@ static LPSTR __apxEvalClasspath(APXHANDLE hPool, LPCSTR szCp)
         return pCpy;
 }
 
+static LPWSTR __apxStrIndexW(LPCWSTR szStr, int nWch)
+{
+    LPWSTR pStr;
+
+    for (pStr = (LPWSTR)szStr; *pStr; pStr++) {
+        if (*pStr == nWch)
+            return pStr;
+    }
+    return NULL;
+}
+
+static LPWSTR __apxStrnCatW(APXHANDLE hPool, LPWSTR pOrg, LPCWSTR szStr, LPCWSTR szAdd)
+{
+    DWORD len = 1;
+    DWORD nas = pOrg == NULL;
+    if (pOrg)
+        len += lstrlenW(pOrg);
+    if (szStr)
+        len += lstrlenW(szStr);
+    if (szAdd)
+        len += lstrlenW(szAdd);
+    pOrg = (LPWSTR)apxPoolRealloc(hPool, pOrg, len * sizeof(WCHAR));
+    if (pOrg) {
+        if (nas)
+            *pOrg = L'\0';
+        if (szStr)
+            lstrcatW(pOrg, szStr);
+        if (szAdd)
+            lstrcatW(pOrg, szAdd);
+    }
+    return pOrg;
+}
+
+static LPWSTR __apxEvalPathPartW(APXHANDLE hPool, LPWSTR pStr, LPCWSTR szPattern)
+{
+    HANDLE           hFind;
+    WIN32_FIND_DATAW stGlob;
+    WCHAR       szJars[MAX_PATH + 1];
+    WCHAR       szPath[MAX_PATH + 1];
+    WCHAR       szQuote[2];
+	
+	int quotes = 0;
+	if(*(szPattern) == L'\"'){
+		quotes = quotes +1;
+	}
+	
+	if(*(szPattern+lstrlenW(szPattern)-1) == L'\"'){
+		quotes = quotes + 2;
+	}
+	
+	LPWSTR cleanedSZPattern;
+	if(quotes == 3){
+		cleanedSZPattern = __apxStrnCatW(hPool, NULL, null, szPattern+1);
+		*(copiedSzPattern+lstrlenW(cleanedSZPattern)-1) = L'\0';
+	} else if(quotes == 2){
+		cleanedSZPattern = __apxStrnCatW(hPool, NULL, null, szPattern);
+		*(copiedSzPattern+lstrlenW(cleanedSZPattern)-1) = L'\0';
+	} else if(quotes == 1){
+		cleanedSZPattern = __apxStrnCatW(hPool, NULL, null, szPattern+1);
+	} else {
+		cleanedSZPattern = szPattern;
+	}	
+	
+	int nullTerm = 1;
+	if(quotes == 3){
+		szPath[0] = L'\"';
+		szPath[1] = L';';
+		szPath[2] = L'\"';
+		szPath[3] = L'\0';
+		nullterm = 3;
+	} else {
+		szPath[0] = L';';
+		szPath[1] = L'\0';
+		nullterm = 1;
+	}
+	
+	szQuote[0] = L'\"';
+	szQuote[1] = L'\0';
+
+    if (lstrlenW(cleanedSZPattern) > (sizeof(szJars) - 5)) {
+        return __apxStrnCatW(hPool, pStr, szPattern, NULL);
+    }
+    lstrcpyW(szJars, cleanedSZPattern);
+	lstrcatW(szJars, ".jar");
+    lstrcatW(szPath, cleanedSZPattern);
+	
+    /* Remove the trailing asterisk
+     */
+    szPath[lstrlenW(szPath) - 1] = L'\0';
+    if ((hFind = FindFirstFileW(szJars, &stGlob)) == INVALID_HANDLE_VALUE) {
+        /* Find failed
+         */
+        return pStr;
+    }
+	/* Add quote in front if needed*/
+	if(quotes == 1 || quotes==3){
+		//add quote here
+		pStr = __apxStrnCatW(hPool, pStr, szQuote, NULL);
+	}
+    pStr = __apxStrnCatW(hPool, pStr, &szPath[nullTerm], stGlob.cFileName);
+    if (pStr == NULL) {
+        FindClose(hFind);
+        return NULL;
+    }
+    while (FindNextFileW(hFind, &stGlob) != 0) {
+        pStr = __apxStrnCatW(hPool, pStr, szPath, stGlob.cFileName);
+        if (pStr == NULL)
+            break;
+    }
+    FindClose(hFind);
+	/* Add quote behind if needed*/
+	if(quotes == 2 || quotes == 3){
+		//add quote here
+		pStr = __apxStrnCatW(hPool, pStr, szQuote, NULL);
+	}
+	if(quotes != 0){
+		apxFree(cleanedSZPattern);
+	}		
+    return pStr;
+}
+
+/**
+ * Call glob on each PATH like string path.
+ * Glob is called only if the part ends with asterisk in which
+ * case asterisk is replaced by *.jar when searching
+ */
+static LPWSTR __apxEvalClasspathW(APXHANDLE hPool, LPCWSTR szCp)
+{
+    LPWSTR pCpy = __apxStrnCatW(hPool, NULL, JAVA_CLASSPATH_W, szCp);
+    LPWSTR pGcp = NULL;
+    LPWSTR pPos;
+    LPWSTR pPtr;
+	
+	int offset=1;
+
+    if (!pCpy)
+        return NULL;
+    pPtr = pCpy + sizeof(JAVA_CLASSPATH_W) - 1;
+    while ((pPos = __apxStrIndexW(pPtr, L';'))) {
+        *pPos = L'\0';
+		offset=1;
+        if (pGcp)
+            pGcp = __apxStrnCatW(hPool, pGcp, L";", NULL);
+        else
+            pGcp = __apxStrnCatW(hPool, NULL, JAVA_CLASSPATH_W, NULL);
+		if (*(pPos - 1) == L'\"'){
+			offset=2;
+		}
+        if ((pPos > pPtr) && (*(pPos - offset) == L'*')) {
+            if (!(pGcp = __apxEvalPathPartW(hPool, pGcp, pPtr))) {
+                /* Error.
+                * Return the original string processed so far.
+                */
+                return pCpy;
+            }
+        }
+        else {
+            /* Standard path element */
+            if (!(pGcp = __apxStrnCatW(hPool, pGcp, pPtr, NULL))) {
+                /* Error.
+                * Return the original string processed so far.
+                */
+                return pCpy;
+            }
+        }
+        pPtr = pPos + 1;
+    }
+    if (*pPtr) {
+		offset=1;
+        int end = lstrlenW(pPtr);
+        if (pGcp)
+            pGcp = __apxStrnCatW(hPool, pGcp, L";", NULL);
+        else
+            pGcp = __apxStrnCatW(hPool, NULL, JAVA_CLASSPATH, NULL);
+		if (*(pPos - 1) == L'\"'){
+			offset=2;
+		}
+		//Check if start and/or ends with a quote first
+        if (end > 0 && pPtr[end - offset] == L'*') {
+            /* Last path element ends with star
+             * Do a globbing.
+             */
+            pGcp = __apxEvalPathPartW(hPool, pGcp, pPtr);
+        }
+        else {
+            /* Just add the part */
+            pGcp = __apxStrnCatW(hPool, pGcp, pPtr, NULL);
+        }
+    }
+    /* Free the allocated copy */
+    if (pGcp) {
+        apxFree(pCpy);
+        return pGcp;
+    }
+    else
+        return pCpy;
+}
+
 /* ANSI version only */
 BOOL
 apxJavaInitialize(APXHANDLE hJava, LPCSTR szClassPath,
@@ -912,12 +1110,21 @@ apxJavaCmdInitialize(APXHANDLE hPool, LPCWSTR szClassPath, LPCWSTR szClass,
     }
 
     /* Process the classpath and class */
-    if (szClassPath) {
+    if (szClassPath && *szClassPath) {
         p = (LPWSTR)apxPoolAlloc(hPool, (lstrlenW(JAVA_CLASSPATH_W) + lstrlenW(szClassPath)) * sizeof(WCHAR));
         lstrcpyW(p, JAVA_CLASSPATH_W);
         lstrcatW(p, szClassPath);
         (*lppArray)[i++] = p;
     }
+	if (szClassPath && *szClassPath) {
+            szCp = __apxEvalClasspath(hJava->hPool, szClassPath);
+            if (szCp == NULL) {
+                apxLogWrite(APXLOG_MARK_ERROR "Invalid classpath %s", szClassPath);
+                return FALSE;
+            }
+            lpJvmOptions[nOptions - sOptions].optionString = szCp;
+            --sOptions;
+        }
     if (szClass) {
         p = (LPWSTR)apxPoolAlloc(hPool, (lstrlenW(szClass)) * sizeof(WCHAR));
         lstrcpyW(p, szClass);

@@ -210,13 +210,17 @@
     Each command parameter is prefixed with <b>--</b> (or <b>++</b>, see below).
     <br/>
     If an environment variable exists with the same name as a command line parameter but
-    prefixed with <code>PR_</code> it will <b>override</b> the equivalent command line parameter.
+    prefixed with <code>PR_</code> it will <b>override</b> the equivalent command line parameter. The parameter itself must not be present for this functionality to work.
     <br/>
     For example:
 <source>set PR_CLASSPATH=xx.jar</source>
 </p>
 <p>is equivalent to providing
 <source>--Classpath=xx.jar</source>
+</p>
+
+<p>
+
 </p>
 <p> as a command line parameter.</p>
 <p>
@@ -288,6 +292,29 @@ JvmOptions:
 -Dfour=4
 </source>
 </p>
+    <h4>Parameter values</h4>
+    Procrun is a c program started from the command line. As such special consideration has to be given when dealing with parameter values containing whitespace or special characters.
+
+    Parameter values containing whitespace have to be encapsulated in double quotes.
+    <source>
+        --description="The service description"
+    </source>
+
+    Parameter values containing a double quote need to escape that quote.
+    <source>
+        --description="The service description"
+    </source>
+
+    Notes:
+    -values containing whitespace do not need to be quoted when set through PR_XXX environment variables
+        -They have to be quoted if set through command line on prunsrv
+    -jvm options containing quotes in the value ex. -Dkey="A value with spaces"
+        -If the jvm option is set through PR_XXX environment variables, these quotes do not need to be escaped
+        -If the jvm option is set through the command line they have to be escaped by prepending them with a \: \"
+    -In jvm mode: "-Dkey=value with spaces"
+    -In java mode: -Dkey="value with spaces"
+    -Environment variables dissapear when installing by executing the bat as non admin and an elevation prompt triggerig for the prunsrv line
+
 <p>
 When updating a service (//US or update command), using <b><code>--</code></b> 
 will replace any existing parameter with the new setting.
