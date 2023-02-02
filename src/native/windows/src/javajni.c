@@ -800,7 +800,7 @@ static LPWSTR __apxEvalPathPartW(APXHANDLE hPool, LPWSTR pStr, LPCWSTR szPattern
         return __apxStrnCatW(hPool, pStr, szPattern, NULL);
     }
     lstrcpyW(szJars, cSzPattern);
-	lstrcatW(szJars, ".jar");
+	lstrcatW(szJars, L".jar");
     lstrcatW(szPath, cSzPattern);
 	
     /* Remove the trailing asterisk
@@ -890,7 +890,7 @@ static LPWSTR __apxEvalClasspathW(APXHANDLE hPool, LPCWSTR szCp)
         if (pGcp)
             pGcp = __apxStrnCatW(hPool, pGcp, L";", NULL);
         else
-            pGcp = __apxStrnCatW(hPool, NULL, JAVA_CLASSPATH, NULL);
+            pGcp = __apxStrnCatW(hPool, NULL, JAVA_CLASSPATH_W, NULL);
 		if (*(pPos - 1) == L'\"'){
 			offset=2;
 		}
@@ -1111,7 +1111,7 @@ apxJavaCmdInitialize(APXHANDLE hPool, LPCWSTR szClassPath, LPCWSTR szClass,
 
     /* Process the classpath and class */
     if (szClassPath && *szClassPath) {
-        p = __apxEvalClasspath(hPool, szClassPath);
+        p = __apxEvalClasspathW(hPool, szClassPath);
 		 /* How to handle failure? */
 		if (p == NULL) {
 			apxLogWrite(APXLOG_MARK_ERROR "Invalid classpath %s", szClassPath);
