@@ -632,6 +632,7 @@ static LPSTR __apxEvalPathPart(APXHANDLE hPool, LPSTR pStr, LPCSTR szPattern)
     /* Remove the trailing asterisk
      */
     szPath[lstrlenA(szPath) - 1] = '\0';
+	apxLogWrite(APXLOG_MARK_DEBUG "szJars '%s'",szJars);
     if ((hFind = FindFirstFileA(szJars, &stGlob)) == INVALID_HANDLE_VALUE) {
         /* Find failed
          */
@@ -758,9 +759,19 @@ static LPWSTR __apxEvalPathPartW(APXHANDLE hPool, LPWSTR pStr, LPCWSTR szPattern
     WCHAR       szPath[MAX_PATH + 1];
     WCHAR       szQuote[2];
 	LPWSTR cSzPattern;
-	int nullTerm = 1;
 	
+	WCHAR  mh[SIZ_HUGLEN];
+	
+	int nullTerm = 1;	
 	int quotes = 0;
+	
+	apxLogWrite(APXLOG_MARK_DEBUG "Starting __apxEvalPathPartW on '%S'",szPattern);
+	
+	if (GetModuleFileNameW(GetModuleHandle(NULL), mh, SIZ_HUGLEN)) {
+        GetLongPathNameW(mh, mh, SIZ_HUGLEN);
+		apxLogWrite(APXLOG_MARK_DEBUG "Location: '%S'", apxPoolStrdupW(hPool, mh));
+	}
+	
 	if(*(szPattern) == L'\"'){
 		quotes = quotes +1;
 	}
@@ -781,6 +792,8 @@ static LPWSTR __apxEvalPathPartW(APXHANDLE hPool, LPWSTR pStr, LPCWSTR szPattern
 		cSzPattern = (LPWSTR)szPattern;
 	}
 	
+	apxLogWrite(APXLOG_MARK_DEBUG "Quotes: '%i'",quotes);
+	
 	if(quotes == 3){
 		szPath[0] = L'\"';
 		szPath[1] = L';';
@@ -800,15 +813,18 @@ static LPWSTR __apxEvalPathPartW(APXHANDLE hPool, LPWSTR pStr, LPCWSTR szPattern
         return __apxStrnCatW(hPool, pStr, szPattern, NULL);
     }
     lstrcpyW(szJars, cSzPattern);
-	lstrcatW(szJars, L".jar");
+	lstrcatW(szJars, L'.jar');
     lstrcatW(szPath, cSzPattern);
 	
     /* Remove the trailing asterisk
      */
     szPath[lstrlenW(szPath) - 1] = L'\0';
+	apxLogWrite(APXLOG_MARK_DEBUG "szJars '%S'",szJars);
+	apxLogWrite(APXLOG_MARK_DEBUG "szPath '%S'",szPath);
     if ((hFind = FindFirstFileW(szJars, &stGlob)) == INVALID_HANDLE_VALUE) {
         /* Find failed
          */
+		 apxLogWrite(APXLOG_MARK_ERROR "Find file failed");
         return pStr;
     }
 	/* Add quote in front if needed*/
@@ -851,20 +867,30 @@ static LPWSTR __apxEvalClasspathW(APXHANDLE hPool, LPCWSTR szCp)
     LPWSTR pPtr;
 	
 	int offset=1;
+	
+	apxLogWrite(APXLOG_MARK_DEBUG "Starting __apxEvalClasspathW '%S'",pCpy);
 
     if (!pCpy)
         return NULL;
-    pPtr = pCpy + sizeof(JAVA_CLASSPATH_W) - 1;
+    pPtr = pCpy + lstrlenW(JAVA_CLASSPATH_W);
+	apxLogWrite(APXLOG_MARK_DEBUG "Start looking for ; in __apxEvalClasspathW '%S'",pPtr);
     while ((pPos = __apxStrIndexW(pPtr, L';'))) {
+		apxLogWrite(APXLOG_MARK_DEBUG "; found");
         *pPos = L'\0';
+		apxLogWrite(APXLOG_MARK_DEBUG "Checking element '%S'",pPtr);
 		offset=1;
         if (pGcp)
             pGcp = __apxStrnCatW(hPool, pGcp, L";", NULL);
         else
             pGcp = __apxStrnCatW(hPool, NULL, JAVA_CLASSPATH_W, NULL);
+		apxLogWrite(APXLOG_MARK_DEBUG "Checking if quote");
 		if (*(pPos - 1) == L'\"'){
 			offset=2;
 		}
+		else {
+			apxLogWrite(APXLOG_MARK_DEBUG "Does not end on quote");
+		}
+		apxLogWrite(APXLOG_MARK_DEBUG "Checking if ends on *");
         if ((pPos > pPtr) && (*(pPos - offset) == L'*')) {
             if (!(pGcp = __apxEvalPathPartW(hPool, pGcp, pPtr))) {
                 /* Error.
@@ -874,6 +900,7 @@ static LPWSTR __apxEvalClasspathW(APXHANDLE hPool, LPCWSTR szCp)
             }
         }
         else {
+			apxLogWrite(APXLOG_MARK_DEBUG "Standard element");
             /* Standard path element */
             if (!(pGcp = __apxStrnCatW(hPool, pGcp, pPtr, NULL))) {
                 /* Error.
@@ -887,25 +914,34 @@ static LPWSTR __apxEvalClasspathW(APXHANDLE hPool, LPCWSTR szCp)
     if (*pPtr) {
         int end = lstrlenW(pPtr);
 		offset=1;
+		apxLogWrite(APXLOG_MARK_DEBUG "Checking last element '%S'", pPtr);
         if (pGcp)
             pGcp = __apxStrnCatW(hPool, pGcp, L";", NULL);
         else
             pGcp = __apxStrnCatW(hPool, NULL, JAVA_CLASSPATH_W, NULL);
-		if (*(pPos - 1) == L'\"'){
+		apxLogWrite(APXLOG_MARK_DEBUG "Checking if end on quote");
+		if (pPtr[end - 1] == L'\"'){
+			apxLogWrite(APXLOG_MARK_DEBUG "Quote");
 			offset=2;
 		}
-		//Check if start and/or ends with a quote first
+		else {
+			apxLogWrite(APXLOG_MARK_DEBUG "Not a quote");
+		}
+		apxLogWrite(APXLOG_MARK_DEBUG "Check if end on *");
         if (end > 0 && pPtr[end - offset] == L'*') {
+			apxLogWrite(APXLOG_MARK_DEBUG "Ends on *");
             /* Last path element ends with star
              * Do a globbing.
              */
             pGcp = __apxEvalPathPartW(hPool, pGcp, pPtr);
         }
         else {
+			apxLogWrite(APXLOG_MARK_DEBUG "Does not end on *");
             /* Just add the part */
             pGcp = __apxStrnCatW(hPool, pGcp, pPtr, NULL);
         }
     }
+	apxLogWrite(APXLOG_MARK_DEBUG "Returning");
     /* Free the allocated copy */
     if (pGcp) {
         apxFree(pCpy);
@@ -1111,10 +1147,12 @@ apxJavaCmdInitialize(APXHANDLE hPool, LPCWSTR szClassPath, LPCWSTR szClass,
 
     /* Process the classpath and class */
     if (szClassPath && *szClassPath) {
+		apxLogWrite(APXLOG_MARK_DEBUG "Original classpath '%S'", szClassPath);
         p = __apxEvalClasspathW(hPool, szClassPath);
+		apxLogWrite(APXLOG_MARK_DEBUG "Edited classpath '%S'", p);
 		 /* How to handle failure? */
 		if (p == NULL) {
-			apxLogWrite(APXLOG_MARK_ERROR "Invalid classpath %s", szClassPath);
+			apxLogWrite(APXLOG_MARK_ERROR "Invalid classpath '%S'", szClassPath);
 			return FALSE;
 		}
         (*lppArray)[i++] = p;
