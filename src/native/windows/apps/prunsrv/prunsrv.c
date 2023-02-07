@@ -1322,7 +1322,7 @@ static DWORD WINAPI serviceStop(LPVOID lpParameter)
         if (_java_shutdown) {
             nArgs = apxJavaCmdInitialize(gPool, SO_CLASSPATH, SO_STOPCLASS,
                                          SO_JVMOPTIONS, SO_JVMMS, SO_JVMMX,
-                                         SO_JVMSS, SO_STOPPARAMS, &pArgs);
+                                         SO_JVMSS, SO_STOPPARAMS, SO_STOPPATH, &pArgs);
         }
         else {
             nArgs = apxMultiSzToArrayW(gPool, SO_STOPPARAMS, &pArgs);
@@ -1524,9 +1524,11 @@ static DWORD serviceStart()
         }
         /* Assemble the command line */
         if (_java_startup) {
+			/* TODO remove */
+			apxLogWrite(APXLOG_MARK_DEBUG "Working path '%S'.",SO_STARTPATH);
             nArgs = apxJavaCmdInitialize(gPool, SO_CLASSPATH, SO_STARTCLASS,
                                          SO_JVMOPTIONS, SO_JVMMS, SO_JVMMX,
-                                         SO_JVMSS, SO_STARTPARAMS, &pArgs);
+                                         SO_JVMSS, SO_STARTPARAMS, SO_STARTPATH, &pArgs);
         }
         else {
             nArgs = apxMultiSzToArrayW(gPool, SO_STARTPARAMS, &pArgs);

@@ -718,6 +718,18 @@ static LPSTR __apxEvalClasspath(APXHANDLE hPool, LPCSTR szCp)
         return pCpy;
 }
 
+static BOOL __apxIsRelativePathW(LPCWSTR szStr)
+{
+	WCHAR       szPath[MAX_PATH + 1];
+	lstrcatW(szPath, szStr);
+    /* Remove the trailing asterisk
+     */
+    szPath[lstrlenW(szPath) - 1] = L'\0';
+	apxLogWrite(APXLOG_MARK_DEBUG "Checking path for relative: '%S'", szPath);
+	return PathIsRelativeW(szPath);
+}
+	
+
 static LPWSTR __apxStrIndexW(LPCWSTR szStr, int nWch)
 {
     LPWSTR pStr;
@@ -751,7 +763,7 @@ static LPWSTR __apxStrnCatW(APXHANDLE hPool, LPWSTR pOrg, LPCWSTR szStr, LPCWSTR
     return pOrg;
 }
 
-static LPWSTR __apxEvalPathPartW(APXHANDLE hPool, LPWSTR pStr, LPCWSTR szPattern)
+static LPWSTR __apxEvalPathPartW(APXHANDLE hPool, LPWSTR pStr, LPCWSTR szWorkPath, LPCWSTR szPattern)
 {
     HANDLE           hFind;
     WIN32_FIND_DATAW stGlob;
@@ -760,41 +772,88 @@ static LPWSTR __apxEvalPathPartW(APXHANDLE hPool, LPWSTR pStr, LPCWSTR szPattern
     WCHAR       szQuote[2];
 	LPWSTR cSzPattern;
 	
+	/* To remove */
 	WCHAR  mh[SIZ_HUGLEN];
 	
 	int nullTerm = 1;	
 	int quotes = 0;
 	
-	apxLogWrite(APXLOG_MARK_DEBUG "Starting __apxEvalPathPartW on '%S'",szPattern);
+	apxLogWrite(APXLOG_MARK_DEBUG "Workpath '%S'",szWorkPath);
 	
+	/* To remove */
+	/*
+	apxLogWrite(APXLOG_MARK_DEBUG "Starting __apxEvalPathPartW on '%S'",szPattern);
+	*/
+	
+	/* To remove */
+	/*
 	if (GetModuleFileNameW(GetModuleHandle(NULL), mh, SIZ_HUGLEN)) {
         GetLongPathNameW(mh, mh, SIZ_HUGLEN);
 		apxLogWrite(APXLOG_MARK_DEBUG "Location: '%S'", apxPoolStrdupW(hPool, mh));
 	}
+	*/
 	
+	
+	/* Check for leading quote */
 	if(*(szPattern) == L'\"'){
 		quotes = quotes +1;
 	}
 	
+	/* Check for trailing quote */
 	if(*(szPattern+lstrlenW(szPattern)-1) == L'\"'){
 		quotes = quotes + 2;
 	}
 	
+	/* Remove potential quotes around the given library path */
 	if(quotes == 3){
+		/* Leading and trailing quote */
 		cSzPattern = __apxStrnCatW(hPool, NULL, NULL, szPattern+1);
 		*(cSzPattern+lstrlenW(cSzPattern)-1) = L'\0';
 	} else if(quotes == 2){
+		/* Trailing quote */
 		cSzPattern = __apxStrnCatW(hPool, NULL, NULL, szPattern);
 		*(cSzPattern+lstrlenW(cSzPattern)-1) = L'\0';
 	} else if(quotes == 1){
+		/* Leading quote */
 		cSzPattern = __apxStrnCatW(hPool, NULL, NULL, szPattern+1);
 	} else {
+		/* No quotes */
 		cSzPattern = (LPWSTR)szPattern;
 	}
 	
+	/* To remove */
+	/*
 	apxLogWrite(APXLOG_MARK_DEBUG "Quotes: '%i'",quotes);
+	*/
 	
+	/* Create the file search path */
+	if(__apxIsRelativePathW(cSzPattern)){
+		/* It is a relative path */
+		apxLogWrite(APXLOG_MARK_DEBUG "Path was relative");
+		/* Check if the path length is bigger than supported */
+		if (lstrlenW(szWorkPath)+lstrlenW(cSzPattern)+1 > (sizeof(szJars) - 5)) {
+			apxLogWrite(APXLOG_MARK_DEBUG "Length too long!");
+			return __apxStrnCatW(hPool, pStr, szPattern, NULL);
+		} else {
+			/* We need to append szWorkPath for the szJars */
+			lstrcatW(szJars, szWorkPath);
+			lstrcatW(szJars, L"/");
+			apxLogWrite(APXLOG_MARK_DEBUG "Appended workpath in front: '%S'", szJars);
+		}
+    } else {
+		/* It is an absolute path */
+		apxLogWrite(APXLOG_MARK_DEBUG "Path was absolute");
+		/* Check if the path length is bigger than supported */
+		if (lstrlenW(cSzPattern) > (sizeof(szJars) - 5)) {
+			return __apxStrnCatW(hPool, pStr, szPattern, NULL);
+		}
+	}
+	lstrcatW(szJars, cSzPattern);
+	lstrcatW(szJars, L".jar");	
+    
+	/* Create the base path for appending the found files */
 	if(quotes == 3){
+		/* Append a trailing and leading quote*/
 		szPath[0] = L'\"';
 		szPath[1] = L';';
 		szPath[2] = L'\"';
@@ -808,17 +867,11 @@ static LPWSTR __apxEvalPathPartW(APXHANDLE hPool, LPWSTR pStr, LPCWSTR szPattern
 	
 	szQuote[0] = L'\"';
 	szQuote[1] = L'\0';
-
-    if (lstrlenW(cSzPattern) > (sizeof(szJars) - 5)) {
-        return __apxStrnCatW(hPool, pStr, szPattern, NULL);
-    }
-    lstrcpyW(szJars, cSzPattern);
-	lstrcatW(szJars, L'.jar');
     lstrcatW(szPath, cSzPattern);
-	
     /* Remove the trailing asterisk
      */
     szPath[lstrlenW(szPath) - 1] = L'\0';
+	
 	apxLogWrite(APXLOG_MARK_DEBUG "szJars '%S'",szJars);
 	apxLogWrite(APXLOG_MARK_DEBUG "szPath '%S'",szPath);
     if ((hFind = FindFirstFileW(szJars, &stGlob)) == INVALID_HANDLE_VALUE) {
@@ -827,6 +880,11 @@ static LPWSTR __apxEvalPathPartW(APXHANDLE hPool, LPWSTR pStr, LPCWSTR szPattern
 		 apxLogWrite(APXLOG_MARK_ERROR "Find file failed");
         return pStr;
     }
+	apxLogWrite(APXLOG_MARK_DEBUG "Found file '%S'",stGlob.cFileName);
+	GetFullPathNameW(stGlob.cFileName,SIZ_HUGLEN,mh,NULL);
+	GetLongPathNameW(mh, mh, SIZ_HUGLEN);
+	apxLogWrite(APXLOG_MARK_DEBUG "Location: '%S'", apxPoolStrdupW(hPool, mh));
+	
 	/* Add quote in front if needed*/
 	if(quotes == 1 || quotes==3){
 		//add quote here
@@ -859,7 +917,7 @@ static LPWSTR __apxEvalPathPartW(APXHANDLE hPool, LPWSTR pStr, LPCWSTR szPattern
  * Glob is called only if the part ends with asterisk in which
  * case asterisk is replaced by *.jar when searching
  */
-static LPWSTR __apxEvalClasspathW(APXHANDLE hPool, LPCWSTR szCp)
+static LPWSTR __apxEvalClasspathW(APXHANDLE hPool, LPCWSTR szWorkPath, LPCWSTR szCp)
 {
     LPWSTR pCpy = __apxStrnCatW(hPool, NULL, JAVA_CLASSPATH_W, szCp);
     LPWSTR pGcp = NULL;
@@ -869,6 +927,7 @@ static LPWSTR __apxEvalClasspathW(APXHANDLE hPool, LPCWSTR szCp)
 	int offset=1;
 	
 	apxLogWrite(APXLOG_MARK_DEBUG "Starting __apxEvalClasspathW '%S'",pCpy);
+	apxLogWrite(APXLOG_MARK_DEBUG "Workpath '%S'",szWorkPath);
 
     if (!pCpy)
         return NULL;
@@ -892,7 +951,7 @@ static LPWSTR __apxEvalClasspathW(APXHANDLE hPool, LPCWSTR szCp)
 		}
 		apxLogWrite(APXLOG_MARK_DEBUG "Checking if ends on *");
         if ((pPos > pPtr) && (*(pPos - offset) == L'*')) {
-            if (!(pGcp = __apxEvalPathPartW(hPool, pGcp, pPtr))) {
+            if (!(pGcp = __apxEvalPathPartW(hPool, pGcp, szWorkPath, pPtr))) {
                 /* Error.
                 * Return the original string processed so far.
                 */
@@ -933,7 +992,7 @@ static LPWSTR __apxEvalClasspathW(APXHANDLE hPool, LPCWSTR szCp)
             /* Last path element ends with star
              * Do a globbing.
              */
-            pGcp = __apxEvalPathPartW(hPool, pGcp, pPtr);
+            pGcp = __apxEvalPathPartW(hPool, pGcp, szWorkPath, pPtr);
         }
         else {
 			apxLogWrite(APXLOG_MARK_DEBUG "Does not end on *");
@@ -1085,11 +1144,14 @@ apxJavaInitialize(APXHANDLE hJava, LPCSTR szClassPath,
 DWORD
 apxJavaCmdInitialize(APXHANDLE hPool, LPCWSTR szClassPath, LPCWSTR szClass,
                      LPCWSTR szOptions, DWORD dwMs, DWORD dwMx,
-                     DWORD dwSs, LPCWSTR szCmdArgs, LPWSTR **lppArray)
+                     DWORD dwSs, LPCWSTR szCmdArgs, LPCWSTR szPath, LPWSTR **lppArray)
 {
 
     DWORD i, nJVM, nCmd, nTotal, lJVM, lCmd;
     LPWSTR p;
+	
+	/* TODO remove */
+	apxLogWrite(APXLOG_MARK_DEBUG "Working path '%S'.",szPath);
 
     /* Calculate the number of all arguments */
     nTotal = 0;
@@ -1148,7 +1210,7 @@ apxJavaCmdInitialize(APXHANDLE hPool, LPCWSTR szClassPath, LPCWSTR szClass,
     /* Process the classpath and class */
     if (szClassPath && *szClassPath) {
 		apxLogWrite(APXLOG_MARK_DEBUG "Original classpath '%S'", szClassPath);
-        p = __apxEvalClasspathW(hPool, szClassPath);
+        p = __apxEvalClasspathW(hPool, szPath, szClassPath);
 		apxLogWrite(APXLOG_MARK_DEBUG "Edited classpath '%S'", p);
 		 /* How to handle failure? */
 		if (p == NULL) {

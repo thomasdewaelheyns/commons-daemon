@@ -49,7 +49,7 @@ BOOL        apxJavaInitialize(APXHANDLE hJava, LPCSTR szClassPath,
 DWORD
 apxJavaCmdInitialize(APXHANDLE hPool, LPCWSTR szClassPath, LPCWSTR szClass,
                      LPCWSTR szOptions, DWORD dwMs, DWORD dwMx,
-                     DWORD dwSs, LPCWSTR szCmdArgs, LPWSTR **lppArray);
+                     DWORD dwSs, LPCWSTR szCmdArgs, LPCWSTR szPath, LPWSTR **lppArray);
 
 BOOL        apxJavaLoadMainClass(APXHANDLE hJava, LPCSTR szClassName,
                                  LPCSTR szMethodName,
